@@ -13,14 +13,14 @@ typedef struct {
 	uint16_t pin;
 } clockPins_t;
 
-clockPins_t hourPins[] = {
+clockPins_t sHourPins[] = {
 	{HOUR_1_GPIO_Port, HOUR_1_Pin},
 	{HOUR_2_GPIO_Port, HOUR_2_Pin},
 	{HOUR_4_GPIO_Port, HOUR_4_Pin},
 	{HOUR_8_GPIO_Port, HOUR_8_Pin}
 };
 
-clockPins_t minutePins[] = {
+clockPins_t sMinutePins[] = {
 	{MINUTE_1_GPIO_Port,  MINUTE_1_Pin},
 	{MINUTE_2_GPIO_Port,  MINUTE_2_Pin},
 	{MINUTE_4_GPIO_Port,  MINUTE_4_Pin},
@@ -29,7 +29,7 @@ clockPins_t minutePins[] = {
 	{MINUTE_32_GPIO_Port, MINUTE_32_Pin}
 };
 
-clockPins_t secondPins[] = {
+clockPins_t sSecondPins[] = {
 	{SECOND_1_GPIO_Port,  SECOND_1_Pin},
 	{SECOND_2_GPIO_Port,  SECOND_2_Pin},
 	{SECOND_4_GPIO_Port,  SECOND_4_Pin},
@@ -43,32 +43,32 @@ clockPins_t secondPins[] = {
 ETAP 2 Test shieldu - linijka świetlna 
 
 /* USER CODE BEGIN PM */
-#define HOURS_LED_CNT 	sizeof(hourPins)/sizeof(hourPins[0])
-#define MINUTE_LED_CNT 	sizeof(minutePins)/sizeof(minutePins[0])
-#define SECOND_LED_CNT 	sizeof(secondPins)/sizeof(secondPins[0])	
+#define HOURS_LED_CNT 	sizeof(sHourPins)/sizeof(sHourPins[0])
+#define MINUTE_LED_CNT 	sizeof(sMinutePins)/sizeof(sMinutePins[0])
+#define SECOND_LED_CNT 	sizeof(sSecondPins)/sizeof(sSecondPins[0])	
 
 /* USER CODE BEGIN 1 */
-uint32_t i;
+uint32_t i = 0;
 
 --sekcja pętli while--
 
-	for(i = 0; i < HOURS_LED_CNT; i++)
-	{
-	  HAL_GPIO_TogglePin(hourPins[i].port, hourPins[i].pin);
-	  HAL_Delay(100);
-	}
+for(i = 0; i < HOURS_LED_CNT; i++)
+{
+  HAL_GPIO_TogglePin(sHourPins[i].port, sHourPins[i].pin);
+  HAL_Delay(100);
+}
 
-	for(i = 0; i < MINUTE_LED_CNT; i++)
-	{
-	  HAL_GPIO_TogglePin(minutePins[i].port, minutePins[i].pin);
-	  HAL_Delay(100);
-	}
+for(i = 0; i < MINUTE_LED_CNT; i++)
+{
+  HAL_GPIO_TogglePin(sMinutePins[i].port, sMinutePins[i].pin);
+  HAL_Delay(100);
+}
 
-	for(i = 0; i < SECOND_LED_CNT; i++)
-	{
-	  HAL_GPIO_TogglePin(secondPins[i].port, secondPins[i].pin);
-	  HAL_Delay(100);
-	}
+for(i = 0; i < SECOND_LED_CNT; i++)
+{
+  HAL_GPIO_TogglePin(sSecondPins[i].port, sSecondPins[i].pin);
+  HAL_Delay(100);
+}
 /***************************/
 
 /***************************/
@@ -127,9 +127,9 @@ timeStatus_e setTime(uint8_t ledCounter, uint8_t timeValue, clockPins_t *ledPins
 
 --sekcja petli while--
 
-setTime(HOURS_LED_CNT,  sTime.Hours,   hourPins,   HOUR_FORMAT);
-setTime(MINUTE_LED_CNT, sTime.Minutes, minutePins, MINUTE_FORMAT);
-setTime(SECOND_LED_CNT, sTime.Seconds, secondPins, SECOND_FORMAT);
+setTime(HOURS_LED_CNT,  sTime.Hours,   sHourPins,   HOUR_FORMAT);
+setTime(MINUTE_LED_CNT, sTime.Minutes, sMinutePins, MINUTE_FORMAT);
+setTime(SECOND_LED_CNT, sTime.Seconds, sSecondPins, SECOND_FORMAT);
 /***************************/
 
 /***************************/
@@ -145,13 +145,15 @@ ETAP 5 Odczytujemy dane z UART w celu synchronizacji shieldu z PC
 #define TERM_CH ';'
 #define BACKSPACE '\177'//w kodzie ASCII Backspace ma ten kod
 #define EQUAL 0
+#define TAB_SIZE 32
 
 /* USER CODE BEGIN PV */
-volatile char ch;
-volatile uint8_t idx;
+//przedorstek g oznacza ze mamy do czynienia z zmienna globana
+volatile char gCh;
+volatile uint8_t gIdx;
 volatile uint8_t gCommandEnd;
 
-volatile unsigned char rxTab[20];
+volatile unsigned char gRxTab[TAB_SIZE];
 volatile bool gSyncTime;
 volatile bool gEchoSend;
 
@@ -189,47 +191,46 @@ bool _isDigit(unsigned char ch)
 
 --pętla while - STOP TEST UART--
 
-if(HAL_UART_Receive(&huart2,(uint8_t *)&ch, 1, uartTime(1, &huart2)) == HAL_OK)
+if(HAL_UART_Receive(&huart2,(uint8_t *)&gCh, 1, uartTime(1, &huart2)) == HAL_OK)
 {
-	if(idx < sizeof(rxTab)/sizeof(rxTab[0]) - 1)
+	if(gIdx < sizeof(gRxTab)/sizeof(gRxTab[0]) - 1)
 	{
-		if(ch != BACKSPACE)
+		if(gCh != BACKSPACE)
 		{
-			rxTab[idx++] = ch;
+			gRxTab[gIdx++] = gCh;
 		}
 		else
 		{
-			if(idx)
-				rxTab[--idx] = 0;
+			if(gIdx)
+				gRxTab[--gIdx] = 0;
 		}
 
-		if(ch == '\r' || ch == '\n')
+		if(gCh == '\r' || gCh == '\n')
 			gCommandEnd = true;
 	}
 	else
 	{
-		idx = 0;
+		gIdx = 0;
 	}
 
-	HAL_UART_Transmit(&huart2,(uint8_t *)&ch, 1, uartTime(1, &huart2));
+	HAL_UART_Transmit(&huart2,(uint8_t *)&gCh, 1, uartTime(1, &huart2));
 }
-
 
 if(gCommandEnd == true)
 {
   // SYNC HH:MM:SS;
 
-  if(memcmp((char *)rxTab, "SYNC", 4) == EQUAL)
+  if(memcmp((char *)gRxTab, "SYNC", 4) == EQUAL)
   /*memcmp sprawdza czy poczatek rowny jest SYNC i ma dlugosc znakow, 0 - tak, inna od 0 - nie*/
   {
 	  char rxHour[3] = {0};
 	  char rxMin[3]  = {0};
 	  char rxSec[3]  = {0};
 
-	  if(_isDigit(rxTab[5])  && _isDigit(rxTab[6])  &&
-		 _isDigit(rxTab[8])  && _isDigit(rxTab[9])  &&
-		 _isDigit(rxTab[11]) && _isDigit(rxTab[12]) &&
-		 rxTab[13] == TERM_CH )
+	  if(_isDigit(gRxTab[5])  && _isDigit(gRxTab[6])  &&
+		 _isDigit(gRxTab[8])  && _isDigit(gRxTab[9])  &&
+		 _isDigit(gRxTab[11]) && _isDigit(gRxTab[12]) &&
+		 gRxTab[13] == TERM_CH )
 	  {
 
 		  /* Sprawdzamy czy zgadza sie format ramki
@@ -242,14 +243,14 @@ if(gCommandEnd == true)
 		   * rxTab[13] - ';'
 		   * */
 
-		  rxHour[0] = rxTab[5];
-		  rxHour[1] = rxTab[6];
+		  rxHour[0] = gRxTab[5];
+		  rxHour[1] = gRxTab[6];
 
-		  rxMin[0] = rxTab[8];
-		  rxMin[1] = rxTab[9];
+		  rxMin[0] = gRxTab[8];
+		  rxMin[1] = gRxTab[9];
 
-		  rxSec[0] = rxTab[11];
-		  rxSec[1] = rxTab[12];
+		  rxSec[0] = gRxTab[11];
+		  rxSec[1] = gRxTab[12];
 
 		  uint8_t syncHour = atoi(rxHour);
 
@@ -291,11 +292,12 @@ if(gCommandEnd == true)
   }
 
   gCommandEnd = false; //komenda sparsowana, oczekujemy na nowa
-  idx = 0; //zerujemy indeks odczytu tablicy
-  
-  memset((char *)rxTab, 0, sizeof(rxTab));
+  gIdx = 0; //zerujemy indeks odczytu tablicy
+
+  memset((char *)gRxTab, 0, sizeof(gRxTab));
   /*funkcja memset czysci - zeruje tablice*/
 }
+
 
 /* USER CODE BEGIN 4 */
 void _putchar(char character)
@@ -318,15 +320,21 @@ typedef struct {
 } prev_t;
 
 /* USER CODE BEGIN PV */
-prev_t prevValue = {0};
-volatile uint32_t cntSec, cntMin, cntHr;
+prev_t sPrevValue = {0};
 
 /* USER CODE BEGIN 1 */
 uint32_t hoursVal = 0;
 uint32_t minuteVal = 0;
 uint32_t secVal = 0;
 
---przed petla while--
+volatile uint32_t gCntSec, gCntMin, gCntHr;
+
+gCntSec++;
+gCntMin++;
+gCntHr++;
+--i tu STOP!--
+
+/* USER CODE BEGIN 2 */
 uint32_t now = HAL_GetTick();
 
 --petla while--
@@ -336,36 +344,36 @@ gSyncTime = false;
 /* co 100ms pobieramy czas z RTC*/
 if(HAL_GetTick() - now > PERIOD_GET_RTC_DATA_MS)
 {
-  HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
-  HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
+	HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+	HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
 
-  hoursVal 	= sTime.Hours;
-  minuteVal = sTime.Minutes;
-  secVal 	= sTime.Seconds;
+	hoursVal 	= sTime.Hours;
+	minuteVal = sTime.Minutes;
+	secVal 	= sTime.Seconds;
 
-  now = HAL_GetTick();
+	now = HAL_GetTick();
 }
 
 /*Ustawienie diod LED na shieldzie*/
-if(gSyncTime || prevValue.hour != hoursVal)
+if(gSyncTime || sPrevValue.hour != hoursVal)
 {
-  cntHr++;
-  setTime(HOURS_LED_CNT,  sTime.Hours,   hourPins,   HOUR_FORMAT);
-  prevValue.hour = hoursVal;
+  gCntHr++;
+  setTime(HOURS_LED_CNT,  sTime.Hours,   sHourPins,   HOUR_FORMAT);
+  sPrevValue.hour = hoursVal;
 }
 
-if(gSyncTime || prevValue.min != minuteVal)
+if(gSyncTime || sPrevValue.min != minuteVal)
 {
-  cntMin++;
-  setTime(MINUTE_LED_CNT, sTime.Minutes, minutePins, MINUTE_FORMAT);
-  prevValue.min = minuteVal;
+  gCntMin++;
+  setTime(MINUTE_LED_CNT, sTime.Minutes, sMinutePins, MINUTE_FORMAT);
+  sPrevValue.min = minuteVal;
 }
 
-if(gSyncTime || prevValue.sec != secVal)
+if(gSyncTime || sPrevValue.sec != secVal)
 {
-  cntSec++;
-  setTime(SECOND_LED_CNT, sTime.Seconds, secondPins, SECOND_FORMAT);
-  prevValue.sec = secVal;
+  gCntSec++;
+  setTime(SECOND_LED_CNT, sTime.Seconds, sSecondPins, SECOND_FORMAT);
+  sPrevValue.sec = secVal;
 }
 /***************************/
 
@@ -373,13 +381,13 @@ if(gSyncTime || prevValue.sec != secVal)
 ETAP 7 Pomiar wydajnosci petli głównej
 
 /* USER CODE BEGIN PV */
-volatile uint32_t cntPerformace;
+volatile uint32_t gCntPerformace;
 
 /* USER CODE BEGIN 2 */
 HAL_TIM_Base_Start_IT(&htim17);
 
 --petla while--
-cntPerformace++;
+gCntPerformace++;
 
 /* USER CODE BEGIN 4 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
@@ -392,17 +400,122 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 /***************************/
 
 /***************************/
-ETAP 8 Odczyt UART w przerwaniu
+ETAP 8 bufor kolowy
+
+/* USER CODE BEGIN PTD */
+
+#define UART_CB_BUFF 32
+
+typedef struct {
+	volatile uint32_t tail;
+	volatile uint32_t head;
+	volatile uint8_t  buffer[UART_CB_BUFF];
+	volatile uint32_t overflow;
+	volatile uint32_t capatity;
+} uartCb_t;
+
+uartCb_t sUartCb;
+
+/* USER CODE BEGIN 0 */
+typedef enum{
+	BUFFER_FULL = -1,
+	BUFFER_PUSH_OK
+} cbPushStatus_e;
+
+typedef enum{
+	BUFFER_EMPTY = -1,
+	BUFFER_POP_OK
+} cbPopStatus_e;
+
+/*funkcja implementujaca bufor kolowy
+ * @return - -1 jezeli mamy overflow bufora, 0 jezeli znak zostal dodany prawidlowo
+ * @params - wskaznik na bufor, znak do zapisania do bufora
+ * */
+cbPushStatus_e pushCb(uartCb_t *cb, unsigned char data)
+{
+    const uint32_t nextHead = (cb->head + 1) & (UART_CB_BUFF - 1);
+
+    if(nextHead == cb->tail) //glowa zderzyla sie z ogonem - bufor przepelniony
+    {
+        cb->overflow++;
+        return BUFFER_FULL;
+    }
+
+    cb->buffer[cb->head] = data;
+    cb->head = nextHead;
+
+    return BUFFER_PUSH_OK;
+}
+
+/*funkcja implementujaca bufor kolowy
+ * @return - -1 jezeli mamy pusty bufor, 0 jezeli znak zostal odczytany prawidlowo
+ * @params - wskaznik na bufor, znak do odczytu z bufora
+ * */
+cbPopStatus_e popCb(uartCb_t *cb, unsigned char *out)
+{
+    if(cb->head == cb->tail)
+    {
+        return BUFFER_EMPTY;
+    }
+
+    *out = cb->buffer[cb->tail];
+
+    cb->tail = (cb->tail + 1) % UART_CB_BUFF;
+
+    return BUFFER_POP_OK;
+}
+
+/*funkcja oblicza ile jest danych w buforze kolowym
+ * @return - ile mamy zajetego miejsca
+ * @params - wskaznik na bufor
+ * */
+uint32_t availableCb(uartCb_t *cb)
+{
+    return (cb->head + UART_CB_BUFF - cb->tail) & (UART_CB_BUFF - 1);
+}
+
+/*funkcja czysci bufor kolowy
+ * @params - wskaznik na bufor
+ * */
+void flushCb(uartCb_t *cb)
+{
+	cb->head = 0;
+	cb->tail = 0;
+
+	memset((char *)cb->buffer, 0, sizeof(cb->buffer));
+}
 
 /* USER CODE BEGIN 2 */
-HAL_UART_Receive_IT(&huart2, (uint8_t *)&ch, 1);
+HAL_UART_Receive_IT(&huart2, (uint8_t *)&gCh, 1);
 
 --petla while--
-/*wysylamy echo z konsoli terminala - znak zwrotny*/
-if(gEchoSend == true)
+
+//uartCb.capatity = availableCb(&sUartCb);
+
+if(popCb(&sUartCb, (unsigned char *)&gCh) == BUFFER_POP_OK)
 {
-  HAL_UART_Transmit(&huart2,(uint8_t *)&ch, 1, uartTime(1, &huart2));
-  gEchoSend = false;
+	if(gIdx < sizeof(gRxTab)/sizeof(gRxTab[0]) - 1)
+	{
+		if(gCh != BACKSPACE)
+		{
+			gRxTab[gIdx++] = gCh;
+		}
+		else
+		{
+			if(gIdx)
+				gRxTab[--gIdx] = 0;
+		}
+
+		if(gCh == '\r' || gCh == '\n')
+			gCommandEnd = true;
+	}
+	else
+	{
+		gIdx = 0;
+	}
+
+	/*wysylamy echo z konsoli terminala - znak zwrotny*/
+	HAL_UART_Transmit(&huart2,(uint8_t *)&gCh, 1, uartTime(1, &huart2));
 }
 
 /* USER CODE BEGIN 4 */
@@ -410,36 +523,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 	if(huart->Instance == USART2)
 	{
-		if(idx < sizeof(rxTab) / sizeof(rxTab[0]) - 1)
-		/*zostawiamy sobie jeden znak w tablicy na terminator C-String '/0'*/
-		{
-			if(ch != BACKSPACE)
-			/*jezeli znak jest inny niz backspace to dodajemy do kolejnej pozycji*/
-			{
-				rxTab[idx++] = ch;
-			}
-			else
-			{
-				/*jezeli backspace - kasujemy pozycje i wracamy indeks wczesniej*/
-				if(idx)
-					rxTab[--idx] = 0;
-			}
-
-			/*wykrycie entera - uznajemy za koniec komendy*/
-			if(ch == '\r' || ch == '\n')
-				gCommandEnd = true;
-		}
-		else
-		{
-			idx = 0; /*przewiniecie indeksu tablicy*/
-		}
-
+		pushCb(&sUartCb, gCh);
 		/*ustawiamy ponownie nasluch przerwaniowy*/
-		HAL_UART_Receive_IT(&huart2,(uint8_t *)&ch, 1);
-		gEchoSend = true; /*sygnalizacja wyslania echa*/
+		HAL_UART_Receive_IT(&huart2,(uint8_t *)&gCh, 1);
 	}
 }
 /***************************/
 
-ETAP 9 Przyspieszenie
+ETAP 11 Przyspieszenie
 Flaga -Os
