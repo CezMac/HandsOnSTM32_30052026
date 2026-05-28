@@ -1,0 +1,445 @@
+/***************************/
+ETAP 1 struktury pinów GPIO sekcja 
+
+/*uzywamy struktury która pozwala na "stablicowanie danych" dzięki temu elementy portów są iterowalne
+w arduino mamy np. kod
+int pins[] = {1,2,3,4,5}; gdzie podajemy numery pinów
+w stm32 podajemy numer portu i pinu np. PA13 to port A pin 13
+*/
+
+/* USER CODE BEGIN PTD */
+typedef struct {
+	GPIO_TypeDef *port;
+	uint16_t pin;
+} clockPins_t;
+
+clockPins_t hourPins[] = {
+	{HOUR_1_GPIO_Port, HOUR_1_Pin},
+	{HOUR_2_GPIO_Port, HOUR_2_Pin},
+	{HOUR_4_GPIO_Port, HOUR_4_Pin},
+	{HOUR_8_GPIO_Port, HOUR_8_Pin}
+};
+
+clockPins_t minutePins[] = {
+	{MINUTE_1_GPIO_Port,  MINUTE_1_Pin},
+	{MINUTE_2_GPIO_Port,  MINUTE_2_Pin},
+	{MINUTE_4_GPIO_Port,  MINUTE_4_Pin},
+	{MINUTE_8_GPIO_Port,  MINUTE_8_Pin},
+	{MINUTE_16_GPIO_Port, MINUTE_16_Pin},
+	{MINUTE_32_GPIO_Port, MINUTE_32_Pin}
+};
+
+clockPins_t secondPins[] = {
+	{SECOND_1_GPIO_Port,  SECOND_1_Pin},
+	{SECOND_2_GPIO_Port,  SECOND_2_Pin},
+	{SECOND_4_GPIO_Port,  SECOND_4_Pin},
+	{SECOND_8_GPIO_Port,  SECOND_8_Pin},
+	{SECOND_16_GPIO_Port, SECOND_16_Pin},
+	{SECOND_32_GPIO_Port, SECOND_32_Pin}
+};
+/***************************/
+
+/***************************/
+ETAP 2 Test shieldu - linijka świetlna 
+
+/* USER CODE BEGIN PM */
+#define HOURS_LED_CNT 	sizeof(hourPins)/sizeof(hourPins[0])
+#define MINUTE_LED_CNT 	sizeof(minutePins)/sizeof(minutePins[0])
+#define SECOND_LED_CNT 	sizeof(secondPins)/sizeof(secondPins[0])	
+
+/* USER CODE BEGIN 1 */
+uint32_t i;
+
+--sekcja pętli while--
+
+	for(i = 0; i < HOURS_LED_CNT; i++)
+	{
+	  HAL_GPIO_TogglePin(hourPins[i].port, hourPins[i].pin);
+	  HAL_Delay(100);
+	}
+
+	for(i = 0; i < MINUTE_LED_CNT; i++)
+	{
+	  HAL_GPIO_TogglePin(minutePins[i].port, minutePins[i].pin);
+	  HAL_Delay(100);
+	}
+
+	for(i = 0; i < SECOND_LED_CNT; i++)
+	{
+	  HAL_GPIO_TogglePin(secondPins[i].port, secondPins[i].pin);
+	  HAL_Delay(100);
+	}
+/***************************/
+
+/***************************/
+ETAP 3 odczyt RTC
+
+/* USER CODE BEGIN 1 */
+UNUSED(i); // uciszenie warningu kompilatora, ze nie uzywamy tej zmiennej
+
+/* USER CODE BEGIN PV */
+RTC_TimeTypeDef sTime = {0};
+RTC_DateTypeDef sDate = {0};
+
+--sekcja petli while-- HAL do poprawnej pracy odczytu czasu, wymaga rowniez odczytu daty!
+
+HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
+/***************************/
+
+/***************************/
+ETAP 4 Wyświetlamy czas na diodach LED
+
+/* USER CODE BEGIN PD */
+#define HOUR_FORMAT 12
+#define MINUTE_FORMAT 59
+#define SECOND_FORMAT 59
+
+/* USER CODE BEGIN 0 */
+typedef enum{
+	TIME_SET_OK,
+	VALUE_ERROR = -1
+} timeStatus_e;
+
+/*funkcja  konwertuje wartosci dziesietne na binarne wcelu wyswietlenia na diodach LED
+ * @return - status
+ * @params - ilosc diod LED, wartosc czasu, struktura pinow, format czasu 12/24
+ * */
+timeStatus_e setTime(uint8_t ledCounter, uint8_t timeValue, clockPins_t *ledPins, uint8_t timeFormat)
+{
+	if(timeValue > timeFormat)
+		return VALUE_ERROR; //zabezpieczenie aby nie wyjsc poza rozmiar tablicy pinow
+
+	uint8_t i = ledCounter;
+
+	while(i > 0)
+	{
+		i--;
+
+		if(timeValue & (1 << i))
+			HAL_GPIO_WritePin(ledPins[i].port, ledPins[i].pin, 1);
+		else
+			HAL_GPIO_WritePin(ledPins[i].port, ledPins[i].pin, 0);
+	}
+
+	return TIME_SET_OK;
+}
+
+--sekcja petli while--
+
+setTime(HOURS_LED_CNT,  sTime.Hours,   hourPins,   HOUR_FORMAT);
+setTime(MINUTE_LED_CNT, sTime.Minutes, minutePins, MINUTE_FORMAT);
+setTime(SECOND_LED_CNT, sTime.Seconds, secondPins, SECOND_FORMAT);
+/***************************/
+
+/***************************/
+ETAP 5 Odczytujemy dane z UART w celu synchronizacji shieldu z PC
+
+/* USER CODE BEGIN Includes */
+#include <stdbool.h>
+#include <string.h>
+#include <stdlib.h>
+#include "printf.h"
+
+/* USER CODE BEGIN PD */
+#define TERM_CH ';'
+#define BACKSPACE '\177'//w kodzie ASCII Backspace ma ten kod
+#define EQUAL 0
+
+/* USER CODE BEGIN PV */
+volatile char ch;
+volatile uint8_t idx;
+volatile uint8_t gCommandEnd;
+
+volatile unsigned char rxTab[20];
+volatile bool gSyncTime;
+volatile bool gEchoSend;
+
+/* USER CODE BEGIN 0 */
+
+/*funkcja oblicza czas potrzebny dla wysylki znaku
+ * @return - czas w ms
+ * @params - ilosc znakow i uchwyt na UART
+ * */
+uint32_t uartTime(uint32_t chars, UART_HandleTypeDef *huart)
+{
+	const uint32_t _8n1 = 10;
+	const uint32_t msPresc = 1000;
+
+	uint32_t ms = (chars * _8n1 * msPresc) / huart->Init.BaudRate;
+
+	return (ms < 1U) ? 1U : ms; //operator ternarny
+}
+
+/*funkcja sprawdza czy dany znak ASCII jest liczba
+ * @return - true jezeli znak jest liczba, false jezeli nie
+ * @params - sprawdzany znak
+ * */
+bool _isDigit(unsigned char ch)
+{
+	/*zapis klasyczny*/
+	if(ch >= '0' && ch <= '9')
+		return true;
+
+	return false;
+
+	/*zapis z uzyciem operatora ternarnego*/
+	//(ch >= '0' && ch <= '9') ? true : false;
+}
+
+--pętla while - STOP TEST UART--
+
+if(HAL_UART_Receive(&huart2,(uint8_t *)&ch, 1, uartTime(1, &huart2)) == HAL_OK)
+{
+	if(idx < sizeof(rxTab)/sizeof(rxTab[0]) - 1)
+	{
+		if(ch != BACKSPACE)
+		{
+			rxTab[idx++] = ch;
+		}
+		else
+		{
+			if(idx)
+				rxTab[--idx] = 0;
+		}
+
+		if(ch == '\r' || ch == '\n')
+			gCommandEnd = true;
+	}
+	else
+	{
+		idx = 0;
+	}
+
+	HAL_UART_Transmit(&huart2,(uint8_t *)&ch, 1, uartTime(1, &huart2));
+}
+
+
+if(gCommandEnd == true)
+{
+  // SYNC HH:MM:SS;
+
+  if(memcmp((char *)rxTab, "SYNC", 4) == EQUAL)
+  /*memcmp sprawdza czy poczatek rowny jest SYNC i ma dlugosc znakow, 0 - tak, inna od 0 - nie*/
+  {
+	  char rxHour[3] = {0};
+	  char rxMin[3]  = {0};
+	  char rxSec[3]  = {0};
+
+	  if(_isDigit(rxTab[5])  && _isDigit(rxTab[6])  &&
+		 _isDigit(rxTab[8])  && _isDigit(rxTab[9])  &&
+		 _isDigit(rxTab[11]) && _isDigit(rxTab[12]) &&
+		 rxTab[13] == TERM_CH )
+	  {
+
+		  /* Sprawdzamy czy zgadza sie format ramki
+		   * rxTab[5] - H
+		   * rxTab[6] - H
+		   * rxTab[8] - M
+		   * rxTab[9] - M
+		   * rxTab[11] - S
+		   * rxTab[12] - S
+		   * rxTab[13] - ';'
+		   * */
+
+		  rxHour[0] = rxTab[5];
+		  rxHour[1] = rxTab[6];
+
+		  rxMin[0] = rxTab[8];
+		  rxMin[1] = rxTab[9];
+
+		  rxSec[0] = rxTab[11];
+		  rxSec[1] = rxTab[12];
+
+		  uint8_t syncHour = atoi(rxHour);
+
+		  if (syncHour == 0)
+			  syncHour = 12;
+		  else if (syncHour > 12)
+			  syncHour = syncHour - 12;
+		  else
+			  syncHour = syncHour;
+
+		  uint8_t syncMin = atoi(rxMin);
+		  uint8_t syncSec = atoi(rxSec);
+
+		  if(syncHour <= HOUR_FORMAT && syncMin <= MINUTE_FORMAT
+		  && syncSec <= SECOND_FORMAT)
+		  {
+			  sTime.Hours = syncHour;
+			  sTime.Minutes = syncMin;
+			  sTime.Seconds = syncSec;
+
+			  HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+
+			  printf("\n\rSYNC OK\n\r");
+			  gSyncTime = true;
+		  }
+		  else
+		  {
+			  printf("\n\rTIMEFORMAT ERR - PUT >>HH <= 12, MM & SS <= 59<<\n\r");
+		  }
+	  }
+	  else
+	  {
+		  printf("\n\rFRAME FORMAT ERR - PUT >>SYNC HH:MM:SS;<<\n\r");
+	  }
+  }
+  else
+  {
+	  printf("\n\rUNKNOW COMMAND\n\r");
+  }
+
+  gCommandEnd = false; //komenda sparsowana, oczekujemy na nowa
+  idx = 0; //zerujemy indeks odczytu tablicy
+  
+  memset((char *)rxTab, 0, sizeof(rxTab));
+  /*funkcja memset czysci - zeruje tablice*/
+}
+
+/* USER CODE BEGIN 4 */
+void _putchar(char character)
+{
+	HAL_UART_Transmit(&huart2, (uint8_t *)&character, 1, 1);
+}
+/***************************/
+
+/***************************/
+ETAP 6 Okresowy odczyt RTC
+
+/* USER CODE BEGIN PD */
+#define PERIOD_GET_RTC_DATA_MS 100
+
+/* USER CODE BEGIN PTD */
+typedef struct {
+    size_t hour;
+    size_t min;
+    size_t sec;
+} prev_t;
+
+/* USER CODE BEGIN PV */
+prev_t prevValue = {0};
+volatile uint32_t cntSec, cntMin, cntHr;
+
+/* USER CODE BEGIN 1 */
+uint32_t hoursVal = 0;
+uint32_t minuteVal = 0;
+uint32_t secVal = 0;
+
+--przed petla while--
+uint32_t now = HAL_GetTick();
+
+--petla while--
+
+gSyncTime = false;
+
+/* co 100ms pobieramy czas z RTC*/
+if(HAL_GetTick() - now > PERIOD_GET_RTC_DATA_MS)
+{
+  HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+  HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
+
+  hoursVal 	= sTime.Hours;
+  minuteVal = sTime.Minutes;
+  secVal 	= sTime.Seconds;
+
+  now = HAL_GetTick();
+}
+
+/*Ustawienie diod LED na shieldzie*/
+if(gSyncTime || prevValue.hour != hoursVal)
+{
+  cntHr++;
+  setTime(HOURS_LED_CNT,  sTime.Hours,   hourPins,   HOUR_FORMAT);
+  prevValue.hour = hoursVal;
+}
+
+if(gSyncTime || prevValue.min != minuteVal)
+{
+  cntMin++;
+  setTime(MINUTE_LED_CNT, sTime.Minutes, minutePins, MINUTE_FORMAT);
+  prevValue.min = minuteVal;
+}
+
+if(gSyncTime || prevValue.sec != secVal)
+{
+  cntSec++;
+  setTime(SECOND_LED_CNT, sTime.Seconds, secondPins, SECOND_FORMAT);
+  prevValue.sec = secVal;
+}
+/***************************/
+
+/***************************/
+ETAP 7 Pomiar wydajnosci petli głównej
+
+/* USER CODE BEGIN PV */
+volatile uint32_t cntPerformace;
+
+/* USER CODE BEGIN 2 */
+HAL_TIM_Base_Start_IT(&htim17);
+
+--petla while--
+cntPerformace++;
+
+/* USER CODE BEGIN 4 */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+	if(htim->Instance == TIM17)
+	{
+		__BKPT(0); //programowy breakpoint dla debuggera
+	}
+}
+/***************************/
+
+/***************************/
+ETAP 8 Odczyt UART w przerwaniu
+
+/* USER CODE BEGIN 2 */
+HAL_UART_Receive_IT(&huart2, (uint8_t *)&ch, 1);
+
+--petla while--
+/*wysylamy echo z konsoli terminala - znak zwrotny*/
+if(gEchoSend == true)
+{
+  HAL_UART_Transmit(&huart2,(uint8_t *)&ch, 1, uartTime(1, &huart2));
+  gEchoSend = false;
+}
+
+/* USER CODE BEGIN 4 */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	if(huart->Instance == USART2)
+	{
+		if(idx < sizeof(rxTab) / sizeof(rxTab[0]) - 1)
+		/*zostawiamy sobie jeden znak w tablicy na terminator C-String '/0'*/
+		{
+			if(ch != BACKSPACE)
+			/*jezeli znak jest inny niz backspace to dodajemy do kolejnej pozycji*/
+			{
+				rxTab[idx++] = ch;
+			}
+			else
+			{
+				/*jezeli backspace - kasujemy pozycje i wracamy indeks wczesniej*/
+				if(idx)
+					rxTab[--idx] = 0;
+			}
+
+			/*wykrycie entera - uznajemy za koniec komendy*/
+			if(ch == '\r' || ch == '\n')
+				gCommandEnd = true;
+		}
+		else
+		{
+			idx = 0; /*przewiniecie indeksu tablicy*/
+		}
+
+		/*ustawiamy ponownie nasluch przerwaniowy*/
+		HAL_UART_Receive_IT(&huart2,(uint8_t *)&ch, 1);
+		gEchoSend = true; /*sygnalizacja wyslania echa*/
+	}
+}
+/***************************/
+
+ETAP 9 Przyspieszenie
+Flaga -Os
