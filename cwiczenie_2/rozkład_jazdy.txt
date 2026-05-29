@@ -42,7 +42,7 @@ clockPins_t sSecondPins[] = {
 /***************************/
 ETAP 2 Test shieldu - linijka świetlna 
 
-/* USER CODE BEGIN PM */
+/* USER CODE BEGIN PM */ //makra do obliczania wielkosci tablic w strukturach
 #define HOURS_LED_CNT 	sizeof(sHourPins)/sizeof(sHourPins[0])
 #define MINUTE_LED_CNT 	sizeof(sMinutePins)/sizeof(sMinutePins[0])
 #define SECOND_LED_CNT 	sizeof(sSecondPins)/sizeof(sSecondPins[0])	
