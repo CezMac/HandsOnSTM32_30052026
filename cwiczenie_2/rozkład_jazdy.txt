@@ -189,8 +189,6 @@ bool _isDigit(unsigned char ch)
 	//(ch >= '0' && ch <= '9') ? true : false;
 }
 
---pętla while - STOP TEST UART - sprawdzamy w debuggerze czy odbiera--
-
 if(HAL_UART_Receive(&huart2,(uint8_t *)&gCh, 1, uartTime(1, &huart2)) == HAL_OK)
 {
 	if(gIdx < sizeof(gRxTab)/sizeof(gRxTab[0]) - 1)
@@ -213,8 +211,10 @@ if(HAL_UART_Receive(&huart2,(uint8_t *)&gCh, 1, uartTime(1, &huart2)) == HAL_OK)
 		gIdx = 0;
 	}
 
-	HAL_UART_Transmit(&huart2,(uint8_t *)&gCh, 1, uartTime(1, &huart2));
+	printf("%c", gCh);
 }
+
+--pętla while - STOP TEST UART - sprawdzamy w debuggerze czy odbiera--
 
 if(gCommandEnd == true)
 {
@@ -298,11 +298,10 @@ if(gCommandEnd == true)
   /*funkcja memset czysci - zeruje tablice*/
 }
 
-
 /* USER CODE BEGIN 4 */
 void _putchar(char character)
 {
-	HAL_UART_Transmit(&huart2, (uint8_t *)&character, 1, 1);
+	HAL_UART_Transmit(&huart2, (uint8_t *)&character, 1, uartTime(1, &huart2));
 }
 /***************************/
 
@@ -332,7 +331,7 @@ volatile uint32_t gCntSec, gCntMin, gCntHr;
 gCntSec++;
 gCntMin++;
 gCntHr++;
---i tu STOP!--
+--i tu STOP! sprawdzamy liczniki--
 
 /* USER CODE BEGIN 2 */
 printf(">>Zegarek binarny<<\n\r");
@@ -429,7 +428,7 @@ typedef enum{
 } cbPopStatus_e;
 
 /*funkcja implementujaca bufor kolowy
- * @return - -1 jezeli mamy overflow bufora, 0 jezeli znak zostal dodany prawidlowo
+ * @return - -1 (BUFFER_FULL) jezeli mamy overflow bufora, 0 (BUFFER_PUSH_OK) jezeli znak zostal dodany prawidlowo
  * @params - wskaznik na bufor, znak do zapisania do bufora
  * */
 cbPushStatus_e pushCb(uartCb_t *cb, unsigned char data)
@@ -449,7 +448,7 @@ cbPushStatus_e pushCb(uartCb_t *cb, unsigned char data)
 }
 
 /*funkcja implementujaca bufor kolowy
- * @return - -1 jezeli mamy pusty bufor, 0 jezeli znak zostal odczytany prawidlowo
+ * @return - -1 (BUFFER_EMPTY) jezeli mamy pusty bufor, 0 (BUFFER_POP_OK) jezeli znak zostal odczytany prawidlowo
  * @params - wskaznik na bufor, znak do odczytu z bufora
  * */
 cbPopStatus_e popCb(uartCb_t *cb, unsigned char *out)
@@ -482,6 +481,7 @@ void flushCb(uartCb_t *cb)
 {
 	cb->head = 0;
 	cb->tail = 0;
+	cb->overflow = 0;
 
 	memset((char *)cb->buffer, 0, sizeof(cb->buffer));
 }
@@ -516,7 +516,7 @@ if(popCb(&sUartCb, (unsigned char *)&gCh) == BUFFER_POP_OK)
 	}
 
 	/*wysylamy echo z konsoli terminala - znak zwrotny*/
-	HAL_UART_Transmit(&huart2,(uint8_t *)&gCh, 1, uartTime(1, &huart2));
+	printf("%c", gCh);
 }
 
 /* USER CODE BEGIN 4 */
